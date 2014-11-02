@@ -110,6 +110,7 @@ static const struct keytype keytypes[] = {
 	{ "ssh-dss-cert-v00@openssh.com", "DSA-CERT-V00",
 	    KEY_DSA_CERT_V00, 0, 1 },
 #endif /* WITH_OPENSSL */
+	{ "ssh-u2f", "U2F", KEY_U2F, 0, 0 },
 	{ NULL, NULL, -1, -1, 0 }
 };
 
@@ -507,6 +508,9 @@ sshkey_new(int type)
 		/* no need to prealloc */
 		break;
 	case KEY_UNSPEC:
+		break;
+	case KEY_U2F:
+		debug("key_new");
 		break;
 	default:
 		free(k);
@@ -1188,6 +1192,10 @@ sshkey_read(struct sshkey *ret, char **cpp)
 
 	cp = *cpp;
 
+	debug("sshkey_read");
+	debug("ret = %p", ret);
+	debug("sshkey_read, ret->type = %d", ret->type);
+
 	switch (ret->type) {
 	case KEY_RSA1:
 #ifdef WITH_SSH1
@@ -1207,6 +1215,43 @@ sshkey_read(struct sshkey *ret, char **cpp)
 			return SSH_ERR_KEY_BITS_MISMATCH;
 		retval = 0;
 #endif /* WITH_SSH1 */
+		break;
+	case KEY_U2F:
+		space = strchr(cp, ' ');
+		if (space == NULL)
+			return SSH_ERR_INVALID_FORMAT;
+		*space = '\0';
+		type = sshkey_type_from_name(cp);
+		debug("type = %d, ret->type = %d", type, ret->type);
+		if (type == KEY_UNSPEC)
+			return SSH_ERR_INVALID_FORMAT;
+		cp = space+1;
+		if (*cp == '\0')
+			return SSH_ERR_INVALID_FORMAT;
+		if (ret->type == KEY_UNSPEC) {
+			ret->type = type;
+		} else if (ret->type != type)
+			return SSH_ERR_KEY_TYPE_MISMATCH;
+		cp = space+1;
+		/* trim comment */
+		space = strchr(cp, ' ');
+		if (space)
+			*space = '\0';
+		blob = sshbuf_new();
+		if ((r = sshbuf_b64tod(blob, cp)) != 0) {
+			sshbuf_free(blob);
+			return r;
+		}
+		debug("r = %d", r);
+		debug("len = %d", sshbuf_len(blob));
+		// TODO: why do we _need_ to use malloc here? xmalloc gives memory that crashes!
+		ret->u2f_pubkey = malloc(65);
+		memcpy(ret->u2f_pubkey, sshbuf_ptr(blob), 65);
+		ret->u2f_key_handle = malloc(sshbuf_len(blob) - 65);
+		memcpy(ret->u2f_key_handle, sshbuf_ptr(blob) + 65, sshbuf_len(blob) - 65);
+		ret->u2f_key_handle_len = sshbuf_len(blob) - 65;
+		sshbuf_free(blob);
+		retval = (r >= 0) ? 0 : 1;
 		break;
 	case KEY_UNSPEC:
 	case KEY_RSA:
@@ -1329,6 +1374,7 @@ sshkey_read(struct sshkey *ret, char **cpp)
 	default:
 		return SSH_ERR_INVALID_ARGUMENT;
 	}
+	debug("retval = %d", retval);
 	return retval;
 }
 

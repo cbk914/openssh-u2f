@@ -1380,6 +1380,59 @@ AC_ARG_WITH([skey],
 	]
 )
 
+# Check whether user wants u2f support (using libu2f-host)
+U2F_MSG="no"
+AC_ARG_WITH([u2f],
+	[  --with-u2f[[=PATH]]   Enable U2F support (using libu2f-host)],
+	[ if test "x$withval" != "xno" ; then
+		if test "x$withval" = "xyes" ; then
+			AC_PATH_TOOL([PKGCONFIG], [pkg-config], [no])
+			if test "x$PKGCONFIG" != "xno"; then
+				AC_MSG_CHECKING([if $PKGCONFIG knows about u2f-host])
+			 	if "$PKGCONFIG" u2f-host; then
+					AC_MSG_RESULT([yes])
+					use_pkgconfig_for_libu2fhost=yes
+				else
+					AC_MSG_RESULT([no])
+				fi
+			fi
+		else
+			CPPFLAGS="$CPPFLAGS -I${withval}/include"
+			if test -n "${need_dash_r}"; then
+				LDFLAGS="-L${withval}/lib -R${withval}/lib ${LDFLAGS}"
+			else
+				LDFLAGS="-L${withval}/lib ${LDFLAGS}"
+			fi
+		fi
+		if test "x$use_pkgconfig_for_libu2fhost" = "xyes"; then
+			LIBU2FHOST=`$PKGCONFIG --libs u2f-host`
+			CPPFLAGS="$CPPFLAGS `$PKGCONFIG --cflags u2f-host`"
+		else
+			LIBU2FHOST="-lu2f-host"
+		fi
+		LIBS="$LIBS $LIBU2FHOST"
+		AC_CHECK_LIB([u2f-host], [u2fh_global_init],
+			[ AC_DEFINE([U2F], [1], [Enable U2F support (using libu2f-host)])
+			  U2F_MSG="yes"
+			  AC_SUBST([LIBU2FHOST])
+			],
+			[ AC_MSG_ERROR([libu2f-host not found]) ],
+			[ $LIBS ]
+		)
+		AC_MSG_CHECKING([if libu2f-host version is compatible])
+		AC_COMPILE_IFELSE(
+		    [AC_LANG_PROGRAM([[ #include <u2f-host.h> ]],
+		    [[
+	u2fh_global_init(0);
+	exit(0);
+		    ]])],
+		    [ AC_MSG_RESULT([yes]) ],
+		    [ AC_MSG_RESULT([no])
+		      AC_MSG_ERROR([u2f-host version is not compatible]) ]
+		)
+	fi ]
+)
+
 # Check whether user wants to use ldns
 LDNS_MSG="no"
 AC_ARG_WITH(ldns,
@@ -4829,6 +4882,7 @@ echo "                 KerberosV support: $KRB5_MSG"
 echo "                   SELinux support: $SELINUX_MSG"
 echo "                 Smartcard support: $SCARD_MSG"
 echo "                     S/KEY support: $SKEY_MSG"
+echo "                       U2F support: $U2F_MSG"
 echo "              MD5 password support: $MD5_MSG"
 echo "                   libedit support: $LIBEDIT_MSG"
 echo "  Solaris process contract support: $SPC_MSG"

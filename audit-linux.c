@@ -113,6 +113,7 @@ audit_event(ssh_audit_event_t event)
 	case SSH_AUTH_FAIL_PUBKEY:
 	case SSH_AUTH_FAIL_HOSTBASED:
 	case SSH_AUTH_FAIL_GSSAPI:
+	case SSH_AUTH_FAIL_U2F:
 	case SSH_INVALID_USER:
 		linux_audit_record_event(-1, audit_username(), NULL,
 			get_remote_ipaddr(), "sshd", 0);

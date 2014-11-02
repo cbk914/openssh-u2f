@@ -109,6 +109,7 @@ initialize_server_options(ServerOptions *options)
 	options->kerberos_ticket_cleanup = -1;
 	options->kerberos_get_afs_token = -1;
 	options->gss_authentication=-1;
+	options->u2f_authentication = -1;
 	options->gss_cleanup_creds = -1;
 	options->password_authentication = -1;
 	options->kbd_interactive_authentication = -1;
@@ -250,6 +251,8 @@ fill_default_server_options(ServerOptions *options)
 		options->kerberos_get_afs_token = 0;
 	if (options->gss_authentication == -1)
 		options->gss_authentication = 0;
+	if (options->u2f_authentication == -1)
+		options->u2f_authentication = 1;
 	if (options->gss_cleanup_creds == -1)
 		options->gss_cleanup_creds = 1;
 	if (options->password_authentication == -1)
@@ -353,6 +356,7 @@ typedef enum {
 	sHostbasedUsesNameFromPacketOnly, sClientAliveInterval,
 	sClientAliveCountMax, sAuthorizedKeysFile,
 	sGssAuthentication, sGssCleanupCreds, sAcceptEnv, sPermitTunnel,
+	sU2FAuthentication,
 	sMatch, sPermitOpen, sForceCommand, sChrootDirectory,
 	sUsePrivilegeSeparation, sAllowAgentForwarding,
 	sHostCertificate,
@@ -424,6 +428,11 @@ static struct {
 #else
 	{ "gssapiauthentication", sUnsupported, SSHCFG_ALL },
 	{ "gssapicleanupcredentials", sUnsupported, SSHCFG_GLOBAL },
+#endif
+#ifdef U2F
+	{ "u2fauthentication", sU2FAuthentication, SSHCFG_ALL },
+#else
+	{ "u2fauthentication", sUnsupported, SSHCFG_ALL },
 #endif
 	{ "passwordauthentication", sPasswordAuthentication, SSHCFG_ALL },
 	{ "kbdinteractiveauthentication", sKbdInteractiveAuthentication, SSHCFG_ALL },
@@ -1106,6 +1115,10 @@ process_server_config_line(ServerOptions *options, char *line,
 
 	case sGssCleanupCreds:
 		intptr = &options->gss_cleanup_creds;
+		goto parse_flag;
+
+	case sU2FAuthentication:
+		intptr = &options->u2f_authentication;
 		goto parse_flag;
 
 	case sPasswordAuthentication:
@@ -1792,6 +1805,7 @@ copy_set_server_options(ServerOptions *dst, ServerOptions *src, int preauth)
 
 	M_CP_INTOPT(password_authentication);
 	M_CP_INTOPT(gss_authentication);
+	M_CP_INTOPT(u2f_authentication);
 	M_CP_INTOPT(rsa_authentication);
 	M_CP_INTOPT(pubkey_authentication);
 	M_CP_INTOPT(kerberos_authentication);
@@ -2043,6 +2057,9 @@ dump_config(ServerOptions *o)
 #ifdef GSSAPI
 	dump_cfg_fmtint(sGssAuthentication, o->gss_authentication);
 	dump_cfg_fmtint(sGssCleanupCreds, o->gss_cleanup_creds);
+#endif
+#ifdef U2F
+	dump_cfg_fmtint(sU2FAuthentication, o->u2f_authentication);
 #endif
 	dump_cfg_fmtint(sPasswordAuthentication, o->password_authentication);
 	dump_cfg_fmtint(sKbdInteractiveAuthentication,

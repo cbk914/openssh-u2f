@@ -72,12 +72,18 @@ extern Authmethod method_hostbased;
 #ifdef GSSAPI
 extern Authmethod method_gssapi;
 #endif
+#ifdef U2F
+extern Authmethod method_u2f;
+#endif
 
 Authmethod *authmethods[] = {
 	&method_none,
 	&method_pubkey,
 #ifdef GSSAPI
 	&method_gssapi,
+#endif
+#ifdef U2F
+    &method_u2f,
 #endif
 	&method_passwd,
 	&method_kbdint,

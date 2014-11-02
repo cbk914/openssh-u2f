@@ -39,6 +39,7 @@ enum ssh_audit_event_type {
 	SSH_AUTH_FAIL_PUBKEY,	/* ssh2 pubkey or ssh1 rsa */
 	SSH_AUTH_FAIL_HOSTBASED,	/* ssh2 hostbased or ssh1 rhostsrsa */
 	SSH_AUTH_FAIL_GSSAPI,
+	SSH_AUTH_FAIL_U2F,
 	SSH_INVALID_USER,
 	SSH_NOLOGIN,		/* denied by /etc/nologin, not implemented */
 	SSH_CONNECTION_CLOSE,	/* closed after attempting auth or session */
