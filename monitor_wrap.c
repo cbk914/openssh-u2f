@@ -1302,29 +1302,38 @@ mm_ssh_gssapi_userok(char *user)
 
 #ifdef U2F
 Key *
-mm_read_user_u2f_key(struct passwd *pw, int idx)
+mm_read_user_u2f_key(struct passwd *pw, u_int key_idx)
 {
 	Buffer m;
-	Key *key;
+	Key *key = NULL;
 	u_char *blob;
 	u_int blen;
+	u_int is_null;
 
 	debug3("%s entering", __func__);
 
 	buffer_init(&m);
-	buffer_put_int(&m, idx);
+	buffer_put_int(&m, key_idx);
 
 	mm_request_send(pmonitor->m_recvfd, MONITOR_REQ_READUSERU2FKEY, &m);
 	mm_request_receive_expect(pmonitor->m_recvfd, MONITOR_ANS_READUSERU2FKEY, &m);
 
-	blob = buffer_get_string(&m, &blen);
-	if ((key = key_from_blob(blob, blen)) == NULL)
-		fatal("%s: key_from_blob failed", __func__);
+	is_null = buffer_get_int(&m);
+	if (is_null == 0) {
+		blob = buffer_get_string(&m, &blen);
+		if ((key = key_from_blob(blob, blen)) == NULL)
+			fatal("%s: key_from_blob failed", __func__);
 
-	free(blob);
+		free(blob);
+	}
+
 	buffer_free(&m);
 	return key;
 }
+
+int
+mm_verify_u2f_user(Key *key, u_char * dgst, size_t dgstlen, u_char * sig, size_t siglen)
+{
+	return verify_u2f_user(key, dgst, dgstlen, sig, siglen);
+}
 #endif /* U2F */
-
-

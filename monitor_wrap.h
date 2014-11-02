@@ -54,7 +54,8 @@ int mm_auth_rsa_key_allowed(struct passwd *, BIGNUM *, Key **);
 int mm_auth_rsa_verify_response(Key *, BIGNUM *, u_char *);
 BIGNUM *mm_auth_rsa_generate_challenge(Key *);
 #ifdef U2F
-Key *mm_read_user_u2f_key(struct passwd *, int idx);
+Key *mm_read_user_u2f_key(struct passwd *, u_int);
+int mm_verify_u2f_user(Key *, u_char *, size_t, u_char *, size_t);
 #endif
 
 #ifdef GSSAPI

@@ -874,7 +874,7 @@ userauth_u2f(Authctxt *authctxt)
     packet_put_cstring(authctxt->service);
     packet_put_cstring(authctxt->method->name);
 	// TODO: shared constants
-	packet_put_int(0);
+	packet_put_int(1);
     packet_send();
 
     dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, &input_userauth_u2f_req);
@@ -885,49 +885,50 @@ userauth_u2f(Authctxt *authctxt)
 void
 input_userauth_u2f_register(int type, u_int32_t seq, void *ctxt)
 {
-    Authctxt *authctxt = ctxt;
+	Authctxt *authctxt = ctxt;
 	char *challenge, *response;
 	// TODO: is it okay to use this as origin? or rather the host fingerprint?
 	const char *origin = options.host_key_alias ?  options.host_key_alias :
-	    authctxt->host;
+		authctxt->host;
 
-    if (authctxt == NULL)
-        fatal("input_userauth_u2f_register: no authentication context");
+	if (authctxt == NULL)
+		fatal("input_userauth_u2f_register: no authentication context");
 
-    authctxt->info_req_seen = 1;
+	authctxt->info_req_seen = 1;
 
 	challenge = packet_get_string(NULL);
-    packet_check_eom();
+	packet_check_eom();
 
 	// TODO: proper error handling :)
 	// TODO: call u2fh_global_init() only once?
-    if (u2fh_global_init(0) != U2FH_OK)
-        fatal("u2fh_global_init()");
+	if (u2fh_global_init(0) != U2FH_OK)
+		fatal("u2fh_global_init()");
 
-    u2fh_devs *devs = NULL;
-    if (u2fh_devs_init(&devs) != U2FH_OK)
-        fatal("u2fh_devs_init()");
+	u2fh_devs *devs = NULL;
+	if (u2fh_devs_init(&devs) != U2FH_OK)
+		fatal("u2fh_devs_init()");
 
-    if (u2fh_devs_discover(devs, NULL) != U2FH_OK)
-        fatal("u2fh_devs_discover()");
+	if (u2fh_devs_discover(devs, NULL) != U2FH_OK)
+		fatal("u2fh_devs_discover() - no devices?");
 
+	error("Touch your security key now to register");
 	if (u2fh_register(devs, challenge, origin, &response, U2FH_REQUEST_USER_PRESENCE) != U2FH_OK)
 		fatal("u2fh_register()");
 	// TODO: u2fh_devs_free()
 
 	debug("response = %s", response);
-	printf("resp: %s ---\n", response);
+	debug("resp: %s ---\n", response);
 
-    packet_start(SSH2_MSG_USERAUTH_INFO_RESPONSE);
-    packet_put_cstring(response);
+	packet_start(SSH2_MSG_USERAUTH_INFO_RESPONSE);
+	packet_put_cstring(response);
 
-    // TODO: do we need this?
-    packet_add_padding(64);
-    packet_send();
+	// TODO: do we need this?
+	packet_add_padding(64);
+	packet_send();
 
 	free(response);
 	dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, NULL);
-    dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, &input_userauth_u2f_register_response);
+	dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, &input_userauth_u2f_register_response);
 }
 
 void
@@ -935,53 +936,54 @@ input_userauth_u2f_register_response(int type, u_int32_t seq, void *ctxt)
 {
 	char *response = packet_get_string(NULL);
 	// TODO: print
-	debug("r = %s", response);
+	error("r = %s", response);
 }
 
 void
 input_userauth_u2f_req(int type, u_int32_t seq, void *ctxt)
 {
-    Authctxt *authctxt = ctxt;
-    char *challenge, *response;
-    u_int num_prompts, i;
-    int echo = 0;
+	Authctxt *authctxt = ctxt;
+	char *challenge, *response;
+	u_int num_prompts, i;
+	int echo = 0;
 	const char *origin = options.host_key_alias ?  options.host_key_alias :
-	    authctxt->host;
+		authctxt->host;
 
-    debug2("input_userauth_u2f_req");
+	debug2("input_userauth_u2f_req");
 
-    if (authctxt == NULL)
-        fatal("input_userauth_u2f_req: no authentication context");
+	if (authctxt == NULL)
+		fatal("input_userauth_u2f_req: no authentication context");
 
-    authctxt->info_req_seen = 1;
+	authctxt->info_req_seen = 1;
 
-    challenge = packet_get_string(NULL);
-    debug("u2f challenge (client): *%s*\n", challenge);
+	challenge = packet_get_string(NULL);
+	debug("u2f challenge (client): *%s*\n", challenge);
 	debug("u2f origin is \"%s\"", origin);
 
 	// TODO: proper error handling :)
 	// TODO: call u2fh_global_init() only once?
-    if (u2fh_global_init(0) != U2FH_OK)
-        fatal("u2fh_global_init()");
+	if (u2fh_global_init(0) != U2FH_OK)
+		fatal("u2fh_global_init()");
 
-    u2fh_devs *devs = NULL;
-    if (u2fh_devs_init(&devs) != U2FH_OK)
-        fatal("u2fh_devs_init()");
+	u2fh_devs *devs = NULL;
+	if (u2fh_devs_init(&devs) != U2FH_OK)
+		fatal("u2fh_devs_init()");
 
-    if (u2fh_devs_discover(devs, NULL) != U2FH_OK)
-        fatal("u2fh_devs_discover()");
+	if (u2fh_devs_discover(devs, NULL) != U2FH_OK)
+		fatal("u2fh_devs_discover() - no devices?");
 
+	error("Touch your security key now to authenticate");
 	if (u2fh_authenticate(devs, challenge, origin, &response, U2FH_REQUEST_USER_PRESENCE) != U2FH_OK)
 		fatal("u2fh_authenticate()");
 
-    packet_check_eom();
+	packet_check_eom();
 
-    packet_start(SSH2_MSG_USERAUTH_INFO_RESPONSE);
-    packet_put_cstring(response);
-    packet_send();
+	packet_start(SSH2_MSG_USERAUTH_INFO_RESPONSE);
+	packet_put_cstring(response);
+	packet_send();
 
 	free(response);
-    dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, NULL);
+	dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, NULL);
 }
 
 #endif /* U2F */

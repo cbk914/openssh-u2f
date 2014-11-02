@@ -111,9 +111,11 @@ struct sshkey {
 	u_char	*ed25519_sk;
 	u_char	*ed25519_pk;
 	struct sshkey_cert *cert;
+#ifdef U2F /* TODO: should we have #ifdef here? */
 	u_char *u2f_pubkey;
-	int u2f_key_handle_len;
+	u_int u2f_key_handle_len;
 	u_char *u2f_key_handle;
+#endif
 };
 
 #define	ED25519_SK_SZ	crypto_sign_ed25519_SECRETKEYBYTES

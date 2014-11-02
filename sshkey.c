@@ -794,6 +794,17 @@ to_blob_buf(const struct sshkey *key, struct sshbuf *b, int force_plain)
 		    key->ed25519_pk, ED25519_PK_SZ)) != 0)
 			return ret;
 		break;
+#ifdef U2F
+	case KEY_U2F:
+		if (key->u2f_pubkey == NULL)
+			return SSH_ERR_INVALID_ARGUMENT;
+		if ((ret = sshbuf_put_cstring(b, typename)) != 0 ||
+		    (ret = sshbuf_put_string(b, key->u2f_pubkey, 65)) != 0 ||
+		    (ret = sshbuf_put_string(b,
+				key->u2f_key_handle, key->u2f_key_handle_len)) != 0)
+			return ret;
+		break;
+#endif
 	default:
 		return SSH_ERR_KEY_TYPE_UNKNOWN;
 	}
@@ -1955,6 +1966,9 @@ sshkey_from_blob_internal(const u_char *blob, size_t blen,
 #if defined(WITH_OPENSSL) && defined(OPENSSL_HAS_ECC)
 	EC_POINT *q = NULL;
 #endif /* WITH_OPENSSL && OPENSSL_HAS_ECC */
+#ifdef U2F
+	u_char *khandle = NULL;
+#endif
 
 #ifdef DEBUG_PK /* XXX */
 	dump_base64(stderr, blob, blen);
@@ -2092,6 +2106,28 @@ sshkey_from_blob_internal(const u_char *blob, size_t blen,
 		key->ed25519_pk = pk;
 		pk = NULL;
 		break;
+#ifdef U2F
+	case KEY_U2F:
+		if ((ret = sshbuf_get_string(b, &pk, &len)) != 0)
+			goto out;
+		if (len != 65) {
+			ret = SSH_ERR_INVALID_FORMAT;
+			goto out;
+		}
+		if ((ret = sshbuf_get_string(b, &khandle, &len)) != 0)
+			goto out;
+		if ((key = sshkey_new(type)) == NULL) {
+			ret = SSH_ERR_ALLOC_FAIL;
+			goto out;
+		}
+		key->u2f_pubkey = pk;
+		key->u2f_key_handle_len = len;
+		key->u2f_key_handle = khandle;
+		pk = NULL;
+		khandle = NULL;
+		ret = SSH_ERR_ALLOC_FAIL;
+		break;
+#endif
 	case KEY_UNSPEC:
 		if ((key = sshkey_new(type)) == NULL) {
 			ret = SSH_ERR_ALLOC_FAIL;
@@ -2125,6 +2161,9 @@ sshkey_from_blob_internal(const u_char *blob, size_t blen,
 	if (q != NULL)
 		EC_POINT_free(q);
 #endif /* WITH_OPENSSL && OPENSSL_HAS_ECC */
+#ifdef U2F
+	free(khandle);
+#endif
 	return ret;
 }
 

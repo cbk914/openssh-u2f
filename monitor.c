@@ -185,6 +185,10 @@ int mm_answer_audit_event(int, Buffer *);
 int mm_answer_audit_command(int, Buffer *);
 #endif
 
+#ifdef U2F
+int mm_answer_read_user_u2f_key(int, Buffer *);
+#endif
+
 static int monitor_read_log(struct monitor *);
 
 static Authctxt *authctxt;
@@ -255,6 +259,9 @@ struct mon_table mon_dispatch_proto20[] = {
     {MONITOR_REQ_GSSSTEP, MON_ISAUTH, mm_answer_gss_accept_ctx},
     {MONITOR_REQ_GSSUSEROK, MON_AUTH, mm_answer_gss_userok},
     {MONITOR_REQ_GSSCHECKMIC, MON_ISAUTH, mm_answer_gss_checkmic},
+#endif
+#ifdef U2F
+    {MONITOR_REQ_READUSERU2FKEY, MON_ISAUTH, mm_answer_read_user_u2f_key},
 #endif
     {0, 0, NULL}
 };
@@ -2165,3 +2172,31 @@ mm_answer_gss_userok(int sock, Buffer *m)
 }
 #endif /* GSSAPI */
 
+#ifdef U2F
+int
+mm_answer_read_user_u2f_key(int sock, Buffer *m)
+{
+	Key *key;
+	u_int key_idx;
+	u_char *blob = NULL;
+	u_int blen = 0;
+
+	key_idx = buffer_get_int(m);
+	buffer_clear(m);
+
+	key = read_user_u2f_key(authctxt->pw, key_idx);
+	buffer_put_int(m, key == NULL ? 1 : 0);
+	if (key != NULL)
+	{
+		if (key_to_blob(key, &blob, &blen) == 0)
+			fatal("%s: key_to_blob failed", __func__);
+		buffer_put_string(m, blob, blen);
+		debug3("%s: sending key", __func__);
+	} else {
+		debug3("%s: no key to send", __func__);
+	}
+
+	mm_request_send(sock, MONITOR_ANS_READUSERU2FKEY, m);
+	return (0);
+}
+#endif /* U2F */
