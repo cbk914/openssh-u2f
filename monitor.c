@@ -187,6 +187,7 @@ int mm_answer_audit_command(int, Buffer *);
 
 #ifdef U2F
 int mm_answer_read_user_u2f_key(int, Buffer *);
+int mm_answer_verify_u2f_user(int, Buffer *);
 #endif
 
 static int monitor_read_log(struct monitor *);
@@ -262,6 +263,7 @@ struct mon_table mon_dispatch_proto20[] = {
 #endif
 #ifdef U2F
     {MONITOR_REQ_READUSERU2FKEY, MON_ISAUTH, mm_answer_read_user_u2f_key},
+    {MONITOR_REQ_VERIFYU2FUSER, MON_AUTH, mm_answer_verify_u2f_user},
 #endif
     {0, 0, NULL}
 };
@@ -2198,5 +2200,30 @@ mm_answer_read_user_u2f_key(int sock, Buffer *m)
 
 	mm_request_send(sock, MONITOR_ANS_READUSERU2FKEY, m);
 	return (0);
+}
+
+int
+mm_answer_verify_u2f_user(int sock, Buffer *m)
+{
+	int authenticated = 0;
+	Key *key;
+	u_char *blob, *dgst, *sig;
+	size_t bloblen, dgstlen, siglen;
+
+	blob = buffer_get_string(m, &bloblen);
+	key = key_from_blob(blob, bloblen);
+	dgst = buffer_get_string(m, &dgstlen);
+	sig = buffer_get_string(m, &siglen);
+
+	buffer_clear(m);
+
+	authenticated = verify_u2f_user(key, dgst, dgstlen, sig, siglen);
+	buffer_put_int(m, authenticated);
+
+	auth_method = "u2f";
+	mm_request_send(sock, MONITOR_ANS_VERIFYU2FUSER, m);
+
+	key_free(key);
+	return authenticated;
 }
 #endif /* U2F */

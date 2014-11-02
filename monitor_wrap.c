@@ -1334,6 +1334,28 @@ mm_read_user_u2f_key(struct passwd *pw, u_int key_idx)
 int
 mm_verify_u2f_user(Key *key, u_char * dgst, size_t dgstlen, u_char * sig, size_t siglen)
 {
-	return verify_u2f_user(key, dgst, dgstlen, sig, siglen);
+	int authenticated = 0;
+	Buffer m;
+	u_char *blob;
+	u_int blen;
+
+	debug3("%s entering", __func__);
+
+	if (key_to_blob(key, &blob, &blen) == 0)
+		fatal("%s: key_to_blob failed", __func__);
+	buffer_init(&m);
+	buffer_put_string(&m, blob, blen);
+	free(blob);
+
+	buffer_put_string(&m, dgst, dgstlen);
+	buffer_put_string(&m, sig, siglen);
+
+	mm_request_send(pmonitor->m_recvfd, MONITOR_REQ_VERIFYU2FUSER, &m);
+	mm_request_receive_expect(pmonitor->m_recvfd, MONITOR_ANS_VERIFYU2FUSER, &m);
+
+	authenticated = buffer_get_int(&m);
+	buffer_free(&m);
+
+	return authenticated;
 }
 #endif /* U2F */
