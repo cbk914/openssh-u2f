@@ -417,6 +417,9 @@ verify_u2f_user(Key *key, u_char *dgst, size_t dgstlen, u_char *sig, size_t sigl
 	EC_KEY *ec;
 	unsigned char *pk;
 
+	// TODO: validate that the given key is in the key files.
+	// We are privileged in this function so it should be easy.
+
 	// TODO: replace a lot of stuff here with constants
 	pk = malloc(sizeof(unsigned char) * (u2f_pubkey_len+26));
 
