@@ -73,6 +73,10 @@ struct Authctxt {
 	char		*krb5_ticket_file;
 	char		*krb5_ccname;
 #endif
+#ifdef U2F
+	Key         *u2f_key;
+	u_char      *u2f_challenge;
+#endif
 	Buffer		*loginmsg;
 	void		*methoddata;
 };

@@ -63,6 +63,8 @@ audit_classify_auth(const char *method)
 		return SSH_AUTH_FAIL_HOSTBASED;
 	else if (strcmp(method, "gssapi-with-mic") == 0)
 		return SSH_AUTH_FAIL_GSSAPI;
+	else if (strcmp(method, "u2f") == 0)
+		return SSH_AUTH_FAIL_U2F;
 	else
 		return SSH_AUDIT_UNKNOWN;
 }
@@ -98,6 +100,7 @@ audit_event_lookup(ssh_audit_event_t ev)
 		{SSH_AUTH_FAIL_PUBKEY,		"AUTH_FAIL_PUBKEY"},
 		{SSH_AUTH_FAIL_HOSTBASED,	"AUTH_FAIL_HOSTBASED"},
 		{SSH_AUTH_FAIL_GSSAPI,		"AUTH_FAIL_GSSAPI"},
+		{SSH_AUTH_FAIL_U2F,		"AUTH_FAIL_U2F"},
 		{SSH_INVALID_USER,		"INVALID_USER"},
 		{SSH_NOLOGIN,			"NOLOGIN"},
 		{SSH_CONNECTION_CLOSE,		"CONNECTION_CLOSE"},

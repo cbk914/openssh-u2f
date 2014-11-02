@@ -1752,6 +1752,7 @@ mm_answer_audit_event(int socket, Buffer *m)
 	case SSH_AUTH_FAIL_PUBKEY:
 	case SSH_AUTH_FAIL_HOSTBASED:
 	case SSH_AUTH_FAIL_GSSAPI:
+	case SSH_AUTH_FAIL_U2F:
 	case SSH_LOGIN_EXCEED_MAXTRIES:
 	case SSH_LOGIN_ROOT_DENIED:
 	case SSH_CONNECTION_CLOSE:
