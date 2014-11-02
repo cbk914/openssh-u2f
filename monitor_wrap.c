@@ -1300,3 +1300,31 @@ mm_ssh_gssapi_userok(char *user)
 }
 #endif /* GSSAPI */
 
+#ifdef U2F
+Key *
+mm_read_user_u2f_key(struct passwd *pw, int idx)
+{
+	Buffer m;
+	Key *key;
+	u_char *blob;
+	u_int blen;
+
+	debug3("%s entering", __func__);
+
+	buffer_init(&m);
+	buffer_put_int(&m, idx);
+
+	mm_request_send(pmonitor->m_recvfd, MONITOR_REQ_READUSERU2FKEY, &m);
+	mm_request_receive_expect(pmonitor->m_recvfd, MONITOR_ANS_READUSERU2FKEY, &m);
+
+	blob = buffer_get_string(&m, &blen);
+	if ((key = key_from_blob(blob, blen)) == NULL)
+		fatal("%s: key_from_blob failed", __func__);
+
+	free(blob);
+	buffer_free(&m);
+	return key;
+}
+#endif /* U2F */
+
+

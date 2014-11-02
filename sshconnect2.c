@@ -874,7 +874,7 @@ userauth_u2f(Authctxt *authctxt)
     packet_put_cstring(authctxt->service);
     packet_put_cstring(authctxt->method->name);
 	// TODO: shared constants
-	packet_put_int(1);
+	packet_put_int(0);
     packet_send();
 
     dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, &input_userauth_u2f_req);
