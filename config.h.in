@@ -1555,6 +1555,9 @@
 /* Define if you want S/Key support */
 #undef SKEY
 
+/* Define if you want U2F support */
+#undef U2F
+
 /* Define if your skeychallenge() function takes 4 arguments (NetBSD) */
 #undef SKEYCHALLENGE_4ARG
 

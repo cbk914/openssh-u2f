@@ -64,6 +64,7 @@ enum sshkey_types {
 	KEY_ED25519_CERT,
 	KEY_RSA_CERT_V00,
 	KEY_DSA_CERT_V00,
+	KEY_U2F,
 	KEY_UNSPEC
 };
 
@@ -110,6 +111,9 @@ struct sshkey {
 	u_char	*ed25519_sk;
 	u_char	*ed25519_pk;
 	struct sshkey_cert *cert;
+	u_char *u2f_pubkey;
+	int u2f_key_handle_len;
+	u_char *u2f_key_handle;
 };
 
 #define	ED25519_SK_SZ	crypto_sign_ed25519_SECRETKEYBYTES

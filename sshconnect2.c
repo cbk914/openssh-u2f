@@ -44,6 +44,10 @@
 #include <vis.h>
 #endif
 
+#ifdef U2F
+#include <u2f-host.h>
+#endif
+
 #include "openbsd-compat/sys-queue.h"
 
 #include "xmalloc.h"
@@ -308,6 +312,13 @@ void	input_gssapi_error(int, u_int32_t, void *);
 void	input_gssapi_errtok(int, u_int32_t, void *);
 #endif
 
+#ifdef U2F
+int userauth_u2f(Authctxt *authctxt);
+void input_userauth_u2f_req(int type, u_int32_t seq, void *ctxt);
+void input_userauth_u2f_register(int type, u_int32_t seq, void *ctxt);
+void input_userauth_u2f_register_response(int type, u_int32_t seq, void *ctxt);
+#endif
+
 void	userauth(Authctxt *, char *);
 
 static int sign_and_send_pubkey(Authctxt *, Identity *);
@@ -326,6 +337,13 @@ Authmethod authmethods[] = {
 		NULL,
 		&options.gss_authentication,
 		NULL},
+#endif
+#ifdef U2F
+    {"u2f",
+        userauth_u2f,
+        NULL,
+        &options.u2f_authentication,
+        NULL},
 #endif
 	{"hostbased",
 		userauth_hostbased,
@@ -837,6 +855,136 @@ input_gssapi_error(int type, u_int32_t plen, void *ctxt)
 	free(lang);
 }
 #endif /* GSSAPI */
+
+#ifdef U2F
+int
+userauth_u2f(Authctxt *authctxt)
+{
+    // first step: we dont send anything, but install a custom dispatcher.
+    debug("sshconnect2:userauth_u2f\n");
+
+	// TODO: is this the right way to disable the method after registration?
+    if (authctxt->info_req_seen) {
+		dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, NULL);
+		return 0;
+	}
+
+    packet_start(SSH2_MSG_USERAUTH_REQUEST);
+    packet_put_cstring(authctxt->server_user);
+    packet_put_cstring(authctxt->service);
+    packet_put_cstring(authctxt->method->name);
+	// TODO: shared constants
+	packet_put_int(1);
+    packet_send();
+
+    dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, &input_userauth_u2f_req);
+    //dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, &input_userauth_u2f_register);
+    return 1;
+}
+
+void
+input_userauth_u2f_register(int type, u_int32_t seq, void *ctxt)
+{
+    Authctxt *authctxt = ctxt;
+	char *challenge, *response;
+	// TODO: is it okay to use this as origin? or rather the host fingerprint?
+	const char *origin = options.host_key_alias ?  options.host_key_alias :
+	    authctxt->host;
+
+    if (authctxt == NULL)
+        fatal("input_userauth_u2f_register: no authentication context");
+
+    authctxt->info_req_seen = 1;
+
+	challenge = packet_get_string(NULL);
+    packet_check_eom();
+
+	// TODO: proper error handling :)
+	// TODO: call u2fh_global_init() only once?
+    if (u2fh_global_init(0) != U2FH_OK)
+        fatal("u2fh_global_init()");
+
+    u2fh_devs *devs = NULL;
+    if (u2fh_devs_init(&devs) != U2FH_OK)
+        fatal("u2fh_devs_init()");
+
+    if (u2fh_devs_discover(devs, NULL) != U2FH_OK)
+        fatal("u2fh_devs_discover()");
+
+	if (u2fh_register(devs, challenge, origin, &response, U2FH_REQUEST_USER_PRESENCE) != U2FH_OK)
+		fatal("u2fh_register()");
+	// TODO: u2fh_devs_free()
+
+	debug("response = %s", response);
+	printf("resp: %s ---\n", response);
+
+    packet_start(SSH2_MSG_USERAUTH_INFO_RESPONSE);
+    packet_put_cstring(response);
+
+    // TODO: do we need this?
+    packet_add_padding(64);
+    packet_send();
+
+	free(response);
+	dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, NULL);
+    dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, &input_userauth_u2f_register_response);
+}
+
+void
+input_userauth_u2f_register_response(int type, u_int32_t seq, void *ctxt)
+{
+	char *response = packet_get_string(NULL);
+	// TODO: print
+	debug("r = %s", response);
+}
+
+void
+input_userauth_u2f_req(int type, u_int32_t seq, void *ctxt)
+{
+    Authctxt *authctxt = ctxt;
+    char *challenge, *response;
+    u_int num_prompts, i;
+    int echo = 0;
+	const char *origin = options.host_key_alias ?  options.host_key_alias :
+	    authctxt->host;
+
+    debug2("input_userauth_u2f_req");
+
+    if (authctxt == NULL)
+        fatal("input_userauth_u2f_req: no authentication context");
+
+    authctxt->info_req_seen = 1;
+
+    challenge = packet_get_string(NULL);
+    debug("u2f challenge (client): *%s*\n", challenge);
+	debug("u2f origin is \"%s\"", origin);
+
+	// TODO: proper error handling :)
+	// TODO: call u2fh_global_init() only once?
+    if (u2fh_global_init(0) != U2FH_OK)
+        fatal("u2fh_global_init()");
+
+    u2fh_devs *devs = NULL;
+    if (u2fh_devs_init(&devs) != U2FH_OK)
+        fatal("u2fh_devs_init()");
+
+    if (u2fh_devs_discover(devs, NULL) != U2FH_OK)
+        fatal("u2fh_devs_discover()");
+
+	if (u2fh_authenticate(devs, challenge, origin, &response, U2FH_REQUEST_USER_PRESENCE) != U2FH_OK)
+		fatal("u2fh_authenticate()");
+
+    packet_check_eom();
+
+    packet_start(SSH2_MSG_USERAUTH_INFO_RESPONSE);
+    packet_put_cstring(response);
+    packet_send();
+
+	free(response);
+    dispatch_set(SSH2_MSG_USERAUTH_INFO_REQUEST, NULL);
+}
+
+#endif /* U2F */
 
 int
 userauth_none(Authctxt *authctxt)
