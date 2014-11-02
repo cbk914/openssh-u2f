@@ -128,6 +128,11 @@ int	 user_key_allowed(struct passwd *, Key *);
 void	 pubkey_auth_info(Authctxt *, const Key *, const char *, ...)
 	    __attribute__((__format__ (printf, 3, 4)));
 
+#ifdef U2F
+Key	 *read_user_u2f_key(struct passwd *, u_int);
+int	 verify_u2f_user(Key *, u_char *, size_t, u_char *, size_t);
+#endif
+
 struct stat;
 int	 auth_secure_path(const char *, struct stat *, const char *, uid_t,
     char *, size_t);

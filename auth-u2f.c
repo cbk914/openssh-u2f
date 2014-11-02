@@ -20,6 +20,7 @@
 #include "packet.h"
 #include "digest.h"
 #include "xmalloc.h"
+#include "monitor_wrap.h"
 
 extern ServerOptions options;
 
@@ -109,14 +110,13 @@ urlsafe_base64_encode(u_char const *src, size_t srclength, char *target, size_t 
 }
 
 static Key*
-read_keyfile(FILE *fp, char *filename, struct passwd *pw)
+read_keyfile(FILE *fp, char *filename, struct passwd *pw, u_long *linenum)
 {
 	// TODO: do we need to use a different constant here?
 	char line[SSH_MAX_PUBKEY_BYTES];
-	u_long linenum = 0;
 	Key *found = NULL;
 
-	while (read_keyfile_line(fp, filename, line, sizeof(line), &linenum) != -1) {
+	while (read_keyfile_line(fp, filename, line, sizeof(line), linenum) != -1) {
 		char *cp, *key_options;
 		if (found != NULL)
 			key_free(found);
@@ -129,21 +129,58 @@ read_keyfile(FILE *fp, char *filename, struct passwd *pw)
         if (!*cp || *cp == '\n' || *cp == '#')
             continue;
 
-		debug("reading key from line %d", linenum);
+		debug("reading key from line %lu", *linenum);
 		if (key_read(found, &cp) != 1) {
-			debug("key_read failed, skipping line %d", linenum);
+			debug("key_read failed, skipping line %lu", *linenum);
 			continue;
 		}
 		debug("key type: %d (u2f = %d)", found->type, KEY_U2F);
 		if (found->type == KEY_U2F) {
 		//if (key_equal(found, key)) {
-			//if (auth_parse_options(pw, key_options, filename, linenum) != 1)
+			//if (auth_parse_options(pw, key_options, filename, *linenum) != 1)
 			//	continue;
 			// TODO: calculate and display a fingerprint of the key handle and pubkey?
-			debug("matching key found: file %s, line %lu", filename, linenum);
+			debug("matching key found: file %s, line %lu", filename, *linenum);
 			// TODO: store multiple matches in authctx->methoddata, or rather authctxt->keys? (see sshconnect2.c)
 			return found;
 		}
+	}
+	return NULL;
+}
+
+/*
+ * Read a key from the key files.
+ */
+Key*
+read_user_u2f_key(struct passwd *pw, u_int key_idx)
+{
+	size_t i;
+	// TODO: It might not be safe to pass the key back to the unprivileged
+	// process. It probably is, but we should review this.
+
+	// In the first step, we need to go through all u2f keys that we have and
+	// collect their key handles.
+	for (i = 0; i < options.num_authkeys_files; i++) {
+		FILE *fp;
+		char *file;
+		Key *key = NULL;
+		u_long linenum = 0;
+		if (strcasecmp(options.authorized_keys_files[i], "none") == 0)
+			continue;
+		file = expand_authorized_keys(options.authorized_keys_files[i], pw);
+		debug("need to check %s", file);
+		fp = fopen(file, "r");
+		do
+		{
+			// TODO: Hackish way to allow getting more than one key
+			key_free(key);
+			key = read_keyfile(fp, file, pw, &linenum);
+		}
+		while(key_idx-- > 0);
+		fclose(fp);
+		free(file);
+		if (key != NULL)
+			return key;
 	}
 	return NULL;
 }
@@ -180,23 +217,18 @@ userauth_u2f(Authctxt *authctxt)
 		debug("u2f mode is authentication");
 	}
 
-    // This is on the server. See sshconnect2.c for the client
-    debug("auth2-gss.c:userauth_u2f");
+	// This is on the server. See sshconnect2.c for the client
+	debug("auth-u2f.c:userauth_u2f");
 
-	Key *key = NULL;
-	// TODO: privsep for this?
-	// In the first step, we need to go through all u2f keys that we have and
-	// collect their key handles.
-	for (i = 0; key == NULL && i < options.num_authkeys_files; i++) {
-		if (strcasecmp(options.authorized_keys_files[i], "none") == 0)
-			continue;
-		char *file = expand_authorized_keys(options.authorized_keys_files[i],
-			authctxt->pw);
-		debug("need to check %s", file);
-		FILE *fp = fopen(file, "r");
-		key = read_keyfile(fp, file, authctxt->pw);
-		fclose(fp);
-		free(file);
+	Key *key;
+	u_int idx = 0;
+	// Get multiple keys by increasing idx until key == NULL
+	// TODO: send multiple challenges for all keys (or something)
+	key = PRIVSEP(read_user_u2f_key(authctxt->pw, idx));
+	if (key == NULL)
+	{
+		debug("no registered u2f keys found\n");
+		return (0);
 	}
 
 	// TODO: handle empty signatureData with a nice message. this seems to happen when the keyhandle is wrong?
@@ -206,8 +238,7 @@ userauth_u2f(Authctxt *authctxt)
 	// TODO: what does auth_info() do?
 	// TODO: we need to store challenge in this authctx somehow :)
 
-    // TODO: shell out to libu2f with PRIVSEP(), like below
-    packet_start(SSH2_MSG_USERAUTH_INFO_REQUEST);
+	packet_start(SSH2_MSG_USERAUTH_INFO_REQUEST);
 	u_char random[32];
 	char challenge[((sizeof(random)+2)/3)*4 + 1];
 	char pubkey[((u2f_pubkey_len+2)/3)*4 + 1];
@@ -225,13 +256,13 @@ userauth_u2f(Authctxt *authctxt)
 		fatal("TODO");
 	xasprintf(&json, "{\"challenge\": \"%s\", \"keyHandle\": \"%s\", \"appId\": \"%s\"}",
 		challenge, keyhandle, appid);
-    packet_put_cstring(json);
+	packet_put_cstring(json);
 	free(json);
-    packet_send();
-    dispatch_set(SSH2_MSG_USERAUTH_INFO_RESPONSE,
-        &input_userauth_u2f_info_response);
-    authctxt->postponed = 1;
-    return (0);
+	packet_send();
+	dispatch_set(SSH2_MSG_USERAUTH_INFO_RESPONSE,
+		&input_userauth_u2f_info_response);
+	authctxt->postponed = 1;
+	return (0);
 }
 
 static void
@@ -379,11 +410,39 @@ out:
 #undef u2f_advance
 }
 
+int
+verify_u2f_user(Key *key, u_char *dgst, size_t dgstlen, u_char *sig, size_t siglen)
+{
+	int ret;
+	EC_KEY *ec;
+	unsigned char *pk;
+
+	// TODO: replace a lot of stuff here with constants
+	pk = malloc(sizeof(unsigned char) * (u2f_pubkey_len+26));
+
+	memcpy(pk, pubkeyprefix, 26);
+	memcpy(pk+26, key->u2f_pubkey, u2f_pubkey_len);
+
+	if ((ec = d2i_EC_PUBKEY(NULL, &pk, u2f_pubkey_len+26)) == NULL)
+		fatal("d2i_EC_PUBKEY() failed");
+	debug("pubkey loaded, yay");
+
+	if ((ret = ECDSA_verify(0, dgst, dgstlen, sig, siglen, ec)) == -1)
+		fatal("ECDSA_verify failed");
+	debug("ret = %d", ret);
+	if (ret == 1)
+		debug("sig verified!");
+
+	EC_KEY_free(ec);
+	return ret == 1;
+}
+
 // TODO: can we send multiple authrequests at the same time, so that we don’t
 // need multiple round-trips but still support multiple security keys
 static void
 input_userauth_u2f_info_response(int type, u_int32_t seq, void *ctxt)
 {
+	int authenticated = 0;
     Authctxt *authctxt = ctxt;
 	u_char digest[ssh_digest_bytes(SSH_DIGEST_SHA256)];
     debug("input_userauth_u2f_info_response\n");
@@ -434,24 +493,12 @@ input_userauth_u2f_info_response(int type, u_int32_t seq, void *ctxt)
 	ssh_digest_final(sha256ctx, digest, sizeof(digest));
 	debug("hashed sig");
 
-	EC_KEY *ec;
-	unsigned char *pk = malloc(sizeof(unsigned char) * (u2f_pubkey_len+26));
-	memcpy(pk, pubkeyprefix, 26);
-	memcpy(pk+26, authctxt->u2f_key->u2f_pubkey, u2f_pubkey_len);
-	if ((ec = d2i_EC_PUBKEY(NULL, &pk, 65+26)) == NULL)
-		fatal("d2i_EC_PUBKEY() failed");
-	debug("pubkey loaded, yay");
+	authenticated = PRIVSEP(verify_u2f_user(
+		authctxt->u2f_key, digest, sizeof(digest), decoded+5, decodedlen-5));
 
-	int ret;
-	if ((ret = ECDSA_verify(0, digest, sizeof(digest), decoded+5, decodedlen-5, ec)) == -1)
-		fatal("ECDSA_verify failed");
-	debug("ret = %d", ret);
-	if (ret == 1)
-		debug("sig verified!");
-
-    authctxt->postponed = 0;
-    dispatch_set(SSH2_MSG_USERAUTH_INFO_RESPONSE, NULL);
-    userauth_finish(authctxt, (ret == 1), "u2f", NULL);
+	authctxt->postponed = 0;
+	dispatch_set(SSH2_MSG_USERAUTH_INFO_RESPONSE, NULL);
+	userauth_finish(authctxt, authenticated, "u2f", NULL);
 }
 
 Authmethod method_u2f = {

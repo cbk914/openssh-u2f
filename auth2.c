@@ -83,7 +83,7 @@ Authmethod *authmethods[] = {
 	&method_gssapi,
 #endif
 #ifdef U2F
-    &method_u2f,
+	&method_u2f,
 #endif
 	&method_passwd,
 	&method_kbdint,
